@@ -1,26 +1,33 @@
 """
 Class that handles data loading and preprocessing
 """
+import copy
+from typing import Optional
 import torch
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 import os
+import random
 
 
 class BrainTumorDataset(Dataset):
-    def __init__(self, path: str, img_size: int = 224, transform=None):
+    def __init__(self, path: str, img_size: int = 224, transform=None, start_idx: int = 0, length: Optional[int]=None):
         self.path = path
         self.img_size = img_size
         self.transform = transform
         self.data = self._load_data()
+        # shuffle data for splitting
+        random.shuffle(self.data)
+        self.length = length or len(self.data)
+        self.start_idx = start_idx
 
     def __len__(self):
-        return len(self.data)
+        return self.length
 
     def __getitem__(self, idx):
-        img_path = self.data[idx][0]
-        label = self.data[idx][1]
+        idx += self.start_idx
+        img_path, label = self.data[idx]
 
         img = Image.open(img_path).convert('RGB')
         img = img.resize((self.img_size, self.img_size))
@@ -41,7 +48,7 @@ class BrainTumorDataset(Dataset):
 
 
 # create data loader
-def create_data_loader(path: str, batch_size: int = 64):
+def create_data_loader(path: str, batch_size: int = 10, split=(0.6, 0.2, 0.2)):
     data_transforms = {
         'train': transforms.Compose([
             transforms.Resize((224, 224)),
@@ -59,15 +66,28 @@ def create_data_loader(path: str, batch_size: int = 64):
                                  [0.5, 0.5, 0.5])
         ]),
     }
+    # we need the same dataset as we randomly shuffle, TODO: nicer if we use subset
+    train_dataset = BrainTumorDataset(path=path)
+    val_dataset = copy.deepcopy(train_dataset)
+    test_dataset = copy.deepcopy(train_dataset)
+    data_len = len(train_dataset)
 
-    image_datasets = {
-        'train': BrainTumorDataset(path=path, transform=data_transforms['train']),
-        'test': BrainTumorDataset(path=path, transform=data_transforms['test'])
-    }
+    train_dataset.length = int(data_len * split[0])
+    train_dataset.transform = data_transforms["train"]
+
+    val_dataset.length = int(data_len * split[1])
+    val_dataset.start_idx = train_dataset.length
+    val_dataset.transform = data_transforms["test"]
+
+    test_dataset.length = data_len - val_dataset.length - train_dataset.length
+    test_dataset.start_idx = val_dataset.length + train_dataset.length
+    test_dataset.transform = data_transforms["test"]
+    
 
     data_loaders = {
-        'train': DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True),
-        'test': DataLoader(image_datasets['test'], batch_size=batch_size, shuffle=True)
+        'train': DataLoader(train_dataset, batch_size=batch_size, shuffle=True),
+        'val': DataLoader(val_dataset, batch_size=batch_size),
+        'test': DataLoader(test_dataset, batch_size=batch_size)
     }
     return data_loaders
 

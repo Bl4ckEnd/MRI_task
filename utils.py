@@ -1,4 +1,6 @@
+import random
 import torch
+import numpy as np
 
 
 def set_device():
@@ -9,7 +11,13 @@ def set_device():
     print(f"Is MPS available? {torch.backends.mps.is_available()}")
 
     # Set the device
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    device = "mps" if torch.backends.mps.is_available() else "cuda:0" if torch.cuda.is_available() else "cpu"
     device = torch.device(device)
     print(f"Using device: {device}")
     return device
+
+def seeding(seed: int):
+    """Sets the seed for all random number generators."""
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
